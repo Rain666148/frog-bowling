@@ -305,7 +305,7 @@ canvas {
     <div class="crash hidden" id="crash">
       <h3>页面出错了</h3>
       <pre id="crashMsg"></pre>
-      <p>按 F12 → Console 看详细堆栈。</p>
+      <p>按 F12 → Console 看详细堆栈。点这里可以关掉。</p>
     </div>
   </div>
 
@@ -314,17 +314,24 @@ canvas {
       var box = document.getElementById('crash');
       var msg = document.getElementById('crashMsg');
       window.__showError = function (t) { msg.textContent = String(t); box.classList.remove('hidden'); };
+      box.addEventListener('click', function () { box.classList.add('hidden'); });
+
       window.addEventListener('error', function (e) {
         window.__showError((e.message || '脚本错误') + '\n文件: ' + (e.filename || '?') + '   行: ' + (e.lineno || '?'));
       });
-      setTimeout(function () {
-        if (!window.__GAME_BOOTED__) {
-          window.__showError('game.js 没有执行，所以按钮点了也没反应。\n\n' +
-            '1. 确认是用浏览器打开的（不是聊天窗口的预览）\n' +
-            '2. 确认 index.html 和 game.js 在同一个文件夹\n' +
-            '3. 确认 assets 文件夹里的图片没被移动');
-        }
-      }, 1500);
+
+      // 必须等 load 之后再判断：单文件版是一个 9MB 的 HTML，
+      // 网慢时脚本要下载好几秒，用固定延时会在"还没跑起来"时误报。
+      window.addEventListener('load', function () {
+        setTimeout(function () {
+          if (!window.__GAME_BOOTED__) {
+            window.__showError('game.js 没有执行，所以按钮点了也没反应。\n\n' +
+              '1. 确认是用浏览器打开的（不是聊天窗口的预览）\n' +
+              '2. 确认 index.html 和 game.js 在同一个文件夹\n' +
+              '3. 确认 assets 文件夹里的图片没被移动');
+          }
+        }, 500);
+      });
     })();
   </script>
 
@@ -355,7 +362,7 @@ window.__ASSETS = {"frogFrames": ["data:image/png;base64,iVBORw0KGgoAAAANSUhEUgA
   window.__GAME_BOOTED__ = true;
 
   // 版本号：改功能时跟着改，页面和脚本对不上就能立刻发现
-  const VERSION = '1.7';
+  const VERSION = '1.8';
 
   /* ---------------- 1. 常量与工具 ---------------- */
 
