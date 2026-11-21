@@ -230,6 +230,14 @@ canvas {
 .btn:hover { transform: translateY(-2px); box-shadow: 0 14px 32px rgba(255, 181, 46, .45), inset 0 -3px 0 rgba(0, 0, 0, .16); }
 .btn:active { transform: translateY(1px); }
 
+/* 资源还没加载完时按钮是禁用的，避免"点了没反应" */
+.btn:disabled {
+  opacity: .5;
+  cursor: progress;
+  transform: none;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, .3);
+}
+
 /* ---------------- 错误提示 ---------------- */
 .crash {
   position: absolute;
@@ -284,7 +292,7 @@ canvas {
         移动鼠标（或手指）瞄准，<b>按住蓄力</b>，<b>松开投球</b>。<br />
         打满 10 格，全中（STRIKE）和补中（SPARE）有额外加分。
       </p>
-      <button class="btn" id="startBtn">开 始 比 赛</button>
+      <button class="btn" id="startBtn" disabled>载 入 中…</button>
       <p class="best">最高分：<span id="startBest">0</span></p>
       <p class="tip">键盘：← → 瞄准，空格蓄力</p>
     </div>
@@ -362,7 +370,7 @@ window.__ASSETS = {"frogFrames": ["data:image/png;base64,iVBORw0KGgoAAAANSUhEUgA
   window.__GAME_BOOTED__ = true;
 
   // 版本号：改功能时跟着改，页面和脚本对不上就能立刻发现
-  const VERSION = '1.8';
+  const VERSION = '1.9';
 
   /* ---------------- 1. 常量与工具 ---------------- */
 
@@ -832,7 +840,10 @@ window.__ASSETS = {"frogFrames": ["data:image/png;base64,iVBORw0KGgoAAAANSUhEUgA
   }
 
   function bindUI() {
-    document.getElementById('startBtn').addEventListener('click', startGame);
+    const startBtn = document.getElementById('startBtn');
+    startBtn.disabled = false;                 // 资源都加载完了才允许开始
+    startBtn.textContent = '开 始 比 赛';
+    startBtn.addEventListener('click', startGame);
     document.getElementById('retryBtn').addEventListener('click', startGame);
 
     G.muted = loadMuted();
