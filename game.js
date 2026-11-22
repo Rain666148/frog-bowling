@@ -22,7 +22,7 @@
   window.__GAME_BOOTED__ = true;
 
   // 版本号：改功能时跟着改，页面和脚本对不上就能立刻发现
-  const VERSION = '2.0';
+  const VERSION = '2.2';
 
   /* ---------------- 1. 常量与工具 ---------------- */
 
@@ -35,6 +35,9 @@
 
   const PERS = 1.9;            // 透视强度：越大，远处缩得越狠
   const BALL_R = 0.109;        // 球半径（米）
+  const BALL_DECEL = 0.9;      // 滚动阻力（m/s²）：力度不够的球会在半路停下
+  const AIM_RANGE = 0.42;      // 瞄准指针左右摆动的幅度（米，瓶线处）
+  const AIM_SPEED = 1.35;      // 指针摆动快慢
   const PIN_R = 0.062;         // 瓶半径（米）
   const PIN_H = 0.50;          // 瓶在屏幕上的高度（米，视觉值，比真实瓶夸张一点更好看）
 
@@ -237,27 +240,64 @@
   let bgmAudio = null;        // 背景音乐
   let recAudio = null;        // 破纪录小窗的声音
 
+  /* ---- 音量：分五类，各自独立，存在本地 ---- */
+
+  const VOL_KEYS = ['bgm', 'throw', 'hit', 'laugh', 'record'];
+  const VOL_DEFAULT = { bgm: 0.42, throw: 0.9, hit: 0.8, laugh: 0.95, record: 0.8 };
+  const VOL_SLIDERS = {
+    volBgm: 'bgm', volThrow: 'throw', volHit: 'hit', volLaugh: 'laugh', volRecord: 'record'
+  };
+  let VOL = { bgm: VOL_DEFAULT.bgm, throw: VOL_DEFAULT.throw, hit: VOL_DEFAULT.hit,
+              laugh: VOL_DEFAULT.laugh, record: VOL_DEFAULT.record };
+
+  function loadVolumes() {
+    try {
+      const raw = localStorage.getItem('frog_vol');
+      if (!raw) return;
+      const o = JSON.parse(raw);
+      VOL_KEYS.forEach(function (k) {
+        if (typeof o[k] === 'number') VOL[k] = clamp(o[k], 0, 1);
+      });
+    } catch (e) { /* 忽略 */ }
+  }
+  function saveVolumes() {
+    try { localStorage.setItem('frog_vol', JSON.stringify(VOL)); } catch (e) { /* 忽略 */ }
+  }
+
+  // 把当前音量应用到所有声音对象，并同步滑块显示
+  function applyVolumes() {
+    if (bgmAudio) bgmAudio.volume = VOL.bgm;
+    if (laughAudio) laughAudio.volume = VOL.laugh;
+    if (recAudio) recAudio.volume = VOL.record;
+    for (const a of SFX) a.volume = VOL.throw;
+    for (const a of HIT_SFX) a.volume = VOL.hit;
+
+    Object.keys(VOL_SLIDERS).forEach(function (id) {
+      const el = document.getElementById(id);
+      const out = document.getElementById(id + 'Val');
+      const v = Math.round(VOL[VOL_SLIDERS[id]] * 100);
+      if (el && document.activeElement !== el) el.value = v;
+      if (out) out.textContent = v;
+    });
+  }
+
   function loadSounds() {
     for (let i = 0; i < AUDIO_FILES.length; i++) {
       const src = (ASSET.audio && ASSET.audio[i]) || AUDIO_FILES[i];
       const a = new Audio(src);
       a.preload = 'auto';
-      a.volume = 0.9;
       SFX.push(a);
     }
     laughAudio = new Audio(ASSET.laughAudio || LAUGH_AUDIO);
     laughAudio.preload = 'auto';
-    laughAudio.volume = 0.95;
 
     bgmAudio = new Audio(ASSET.bgm || BGM_FILE);
     bgmAudio.preload = 'auto';
     bgmAudio.loop = true;
-    bgmAudio.volume = 0.42;      // 背景音乐压低，别盖过投球音效
 
     recAudio = new Audio(ASSET.recordAudio || REC_AUDIO);
     recAudio.preload = 'auto';
     recAudio.loop = true;
-    recAudio.volume = 0.8;
 
     for (let i = 0; i < HIT_AUDIO.length; i++) {
       const src = (ASSET.hitAudio && ASSET.hitAudio[i]) || HIT_AUDIO[i];
@@ -265,6 +305,8 @@
       a.preload = 'auto';
       HIT_SFX.push(a);
     }
+
+    applyVolumes();
   }
 
   // 撞瓶声：音高/音量跟撞击力度走，并且限流（十只瓶一起撞时不能糊成噪音）
@@ -277,8 +319,9 @@
 
     const tpl = HIT_SFX[Math.floor(Math.random() * HIT_SFX.length)];
     const a = tpl.cloneNode();                    // 克隆才能叠着响
-    a.volume = Math.min(0.95, 0.32 + strength * 0.06);
+    a.volume = Math.min(1, VOL.hit * (0.4 + strength * 0.06));
     a.playbackRate = 0.9 + Math.random() * 0.22;
+    a.loop = false;
     const p = a.play();
     if (p && p.catch) p.catch(function () {});
   }
@@ -303,6 +346,7 @@
       try { a.pause(); a.currentTime = 0; } catch (e) { /* 忽略 */ }
     }
     const pick = SFX[Math.floor(Math.random() * SFX.length)];
+    pick.volume = VOL.throw;
     pick.currentTime = 0;
     const p = pick.play();
     // 浏览器可能因为自动播放策略拒绝；用户点击投球算手势，通常没问题
@@ -322,6 +366,7 @@
 
     ball: null,
     aimX: 0,              // 瞄准点在瓶线的横向偏移（米）
+    aimLocked: false,     // 方向是否已经锁定（锁定后才能蓄力）
     power: 0,             // 0~1
     powerT: 0,
     charging: false,
@@ -404,15 +449,12 @@
 
   /* ---------------- 5. 输入 ---------------- */
 
-  function pointerXToAim(clientX) {
-    const rect = canvas.getBoundingClientRect();
-    const px = ((clientX - rect.left) / rect.width) * W;
-    return clamp((px - W / 2) / (W / 2) * 0.42, -0.42, 0.42);
+  // 按住：指针立刻停住（方向锁定）+ 蓄力条开始跑；松开就投。
+  function beginThrowCharge() {
+    if (G.mode !== 'aim' || G.charging) return;
+    G.aimLocked = true;       // 指针停在按下的那一刻
+    startCharge();
   }
-
-  canvas.addEventListener('pointermove', function (e) {
-    if (G.mode === 'aim') G.aimX = pointerXToAim(e.clientX);
-  });
 
   canvas.addEventListener('pointerdown', function (e) {
     // 笑的时候点一下屏幕就跳过
@@ -422,8 +464,7 @@
     }
     if (G.mode !== 'aim') return;
     if (canvas.setPointerCapture) canvas.setPointerCapture(e.pointerId);
-    G.aimX = pointerXToAim(e.clientX);
-    startCharge();
+    beginThrowCharge();
   });
 
   window.addEventListener('pointerup', function () {
@@ -436,13 +477,9 @@
 
   window.addEventListener('keydown', function (e) {
     const k = e.key.toLowerCase();
-    if (k === 'arrowleft' || k === 'arrowright' || k === ' ') e.preventDefault();
+    if (k === ' ' || k === 'enter') e.preventDefault();
 
-    if (G.mode === 'aim') {
-      if (k === 'arrowleft') G.aimX = clamp(G.aimX - 0.35, -0.42, 0.42);
-      if (k === 'arrowright') G.aimX = clamp(G.aimX + 0.35, -0.42, 0.42);
-      if (k === ' ' && !G.charging) startCharge();
-    }
+    if (G.mode === 'aim' && k === ' ' && !e.repeat) beginThrowCharge();
     if ((k === ' ' || k === 'enter') && G.mode === 'title') startGame();
     if ((k === ' ' || k === 'enter') && G.mode === 'over') startGame();
     if ((k === ' ' || k === 'enter') && G.mode === 'celebrate' && G.laughEnd) G.laughEnd();
@@ -560,6 +597,19 @@
         if (!G.laughEnabled && G.laughEnd) G.laughEnd();
       });
     }
+
+    // 五个音量条
+    loadVolumes();
+    Object.keys(VOL_SLIDERS).forEach(function (id) {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.addEventListener('input', function () {
+        VOL[VOL_SLIDERS[id]] = clamp(Number(el.value) / 100, 0, 1);
+        saveVolumes();
+        applyVolumes();
+      });
+    });
+    applyVolumes();
   }
 
   function startGame() {
@@ -602,7 +652,9 @@
   function throwBall(power) {
     if (G.mode !== 'aim') return;
 
-    const speed = 6.4 + clamp(power, 0, 1) * 5.4;      // 6.4 ~ 11.8 m/s
+    const p = clamp(power, 0, 1);
+    // 4.0 ~ 11.6 m/s：最轻的一球会在半路停下（滚动阻力 0.9 m/s²）
+    const speed = 4.0 + p * 7.6;
     const z0 = 0.8;
     const dz = LANE.pinZ - z0;
     const len = Math.hypot(G.aimX, dz);
@@ -610,7 +662,8 @@
     G.ball = {
       x: 0,
       z: z0,
-      vx: speed * G.aimX / len,
+      // 一点点"球道误差"：同样的操作不会每次都走同一条线，杜绝无敌点位
+      vx: speed * G.aimX / len + rand(-0.055, 0.055),
       vz: speed * dz / len,
       dist: 0,
       gutter: false,
@@ -633,9 +686,11 @@
     G.frames[G.frame - 1].push(knocked);
 
     const wasStrike = knocked === 10 && G.rackStanding === 10;
-    if (wasStrike) showMessage('STRIKE!', '#ffd75e');
-    else if (knocked === G.rackStanding && G.rackStanding < 10) showMessage('SPARE!', '#7de0ff');
+    const wasSpare = !wasStrike && knocked === G.rackStanding && G.rackStanding < 10;
+    if (wasStrike) showMessage('全中！+10', '#ffd75e');
+    else if (wasSpare) showMessage('补中！+10', '#7de0ff');
     else if (knocked > 0) showMessage('+' + knocked, '#cfc6e6');
+    else showMessage('这一球空了', '#9d94b8');
 
     G.ball = null;
     clearFallen();           // 倒下的瓶淡出，别躺在原地
@@ -698,6 +753,7 @@
     G.power = 0;
     G.powerT = 0;
     G.charging = false;
+    G.aimLocked = false;      // 下一球要重新锁定方向
     G.settleT = 0;
     renderBoard();
   }
@@ -897,19 +953,41 @@
     return out;
   }
 
+  // 一格结果的"人话"版本：全中 / 补中 / 7+2 / 3（只投了一球）
+  function frameLabel(rolls) {
+    if (!rolls || rolls.length === 0) return '·';
+    if (rolls[0] === 10) return '全中';
+    if (rolls.length >= 2 && rolls[0] + rolls[1] === 10) return '补中';
+    return rolls.join('+');
+  }
+
   function renderBoard() {
     const sc = scoreFrames();
-    let html = '';
+    let cells = '';
     for (let i = 0; i < 10; i++) {
       const f = sc[i];
       const cls = 'cell' + (i === 9 ? ' last' : '') + (i + 1 === G.frame && G.mode !== 'over' ? ' now' : '');
-      html += '<div class="' + cls + '">' +
-        '<span class="fn">' + (i + 1) + '</span>' +
-        '<span class="ris">' + (f.marks || '') + '</span>' +
+      cells += '<div class="' + cls + '">' +
+        '<span class="fn">第' + (i + 1) + '格</span>' +
+        '<span class="ris">' + frameLabel(f.rolls) + '</span>' +
+        '<span class="fsc">' + (f.score == null ? '' : f.score) + '</span>' +
         '<span class="tt">' + (f.cum == null ? '' : f.cum) + '</span>' +
         '</div>';
     }
-    boardEl.innerHTML = html;
+
+    // 总分 = 最后一个结算完的累计
+    let total = 0;
+    for (const f of sc) if (f.cum != null) total = f.cum;
+
+    boardEl.innerHTML =
+      '<div class="row">' + cells + '</div>' +
+      '<p class="legend">' +
+        '<span class="lines">' +
+          '<span>每格从上到下：结果 · 本格得分 · 累计总分</span>' +
+          '<span>全中 = 10 分 + 下两球　·　补中 = 10 分 + 下一球</span>' +
+        '</span>' +
+        '<b>总分 ' + total + '</b>' +
+      '</p>';
   }
 
   /* ---------------- 7. 物理 ---------------- */
@@ -933,8 +1011,13 @@
         b.vx = 0;
       }
 
-      // 摩擦
-      b.vz *= 1 - 0.10 * h;
+      // 滚动阻力：力度小的时候球会在半路停下（这是"力度"最直观的反馈）
+      b.vz -= BALL_DECEL * h;
+      if (b.vz < 0.35 && !b.gutter) {
+        b.vz = 0;
+        b.done = true;
+        b.stalled = b.z < LANE.pinZ - 1;
+      }
 
       // 撞瓶（只在瓶区附近检测，省点计算）
       if (!b.gutter && b.z > LANE.pinZ - 1.2) {
@@ -1092,7 +1175,7 @@
     ctx.save();
     ctx.shadowColor = 'rgba(255, 190, 61, .55)';
     ctx.shadowBlur = 26;
-    roundRect(104, 62, 272, 66, 16);
+    roundRect(104, 158, 272, 66, 16);
     ctx.fillStyle = 'rgba(20, 14, 32, .9)';
     ctx.fill();
     ctx.strokeStyle = 'rgba(255, 205, 90, .85)';
@@ -1104,11 +1187,11 @@
     ctx.font = '700 26px "PingFang SC", "Microsoft YaHei", sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText('奶蛙保龄球', 240, 90);
+    ctx.fillText('奶蛙保龄球', 240, 186);
 
     ctx.fillStyle = 'rgba(255,255,255,.45)';
     ctx.font = '600 11px system-ui, sans-serif';
-    ctx.fillText('F R O G   B O W L I N G', 240, 112);
+    ctx.fillText('F R O G   B O W L I N G', 240, 208);
 
     // 招牌下面的暗色护墙
     const g2 = ctx.createLinearGradient(0, 150, 0, FAR_Y);
@@ -1314,12 +1397,13 @@
 
     const start = project(0, 0.7);
     const target = project(G.aimX, LANE.pinZ + 0.35);
+    const locked = G.aimLocked;
 
-    // 虚线
+    // 引导线：没锁定时是虚的（还在晃），锁定后变实
     ctx.save();
-    ctx.setLineDash([9, 9]);
-    ctx.lineWidth = 2;
-    ctx.strokeStyle = 'rgba(255, 231, 150, .45)';
+    ctx.setLineDash(locked ? [] : [9, 9]);
+    ctx.lineWidth = locked ? 2.5 : 2;
+    ctx.strokeStyle = locked ? 'rgba(255, 231, 150, .75)' : 'rgba(255, 231, 150, .4)';
     ctx.beginPath();
     ctx.moveTo(start.x, start.y - 26);
     ctx.lineTo(target.x, target.y);
@@ -1328,16 +1412,36 @@
 
     // 落点圈
     const pulse = 1 + Math.sin(G.t * 6) * 0.12;
-    ctx.strokeStyle = 'rgba(255, 215, 94, .9)';
-    ctx.lineWidth = 2;
+    ctx.strokeStyle = locked ? 'rgba(255, 215, 94, 1)' : 'rgba(255, 215, 94, .65)';
+    ctx.lineWidth = locked ? 3 : 2;
     ctx.beginPath();
     ctx.ellipse(target.x, target.y, 13 * pulse, 5 * pulse, 0, 0, Math.PI * 2);
     ctx.stroke();
+
+    // 未锁定：在瓶线附近画一条"扫描带"，让人看清指针在左右跑
+    if (!locked) {
+      const left = project(-AIM_RANGE, LANE.pinZ + 0.35);
+      const right = project(AIM_RANGE, LANE.pinZ + 0.35);
+      ctx.strokeStyle = 'rgba(255, 215, 94, .22)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(left.x, left.y);
+      ctx.lineTo(right.x, right.y);
+      ctx.stroke();
+
+      ctx.fillStyle = 'rgba(255, 215, 94, .95)';
+      ctx.beginPath();
+      ctx.moveTo(target.x, target.y - 8);
+      ctx.lineTo(target.x - 5, target.y - 16);
+      ctx.lineTo(target.x + 5, target.y - 16);
+      ctx.closePath();
+      ctx.fill();
+    }
   }
 
   function drawHud() {
-    // 蓄力条（右下）
-    if (G.mode === 'aim') {
+    // 蓄力条（右下）：锁定方向之后才出现
+    if (G.mode === 'aim' && G.aimLocked) {
       const bw = 16, bh = 132;
       const bx = W - 40, by = 470;
 
@@ -1379,9 +1483,10 @@
     ctx.fillText(label, 22, 566);
 
     if (G.mode === 'aim') {
-      ctx.fillStyle = 'rgba(255,255,255,.55)';
+      const hint = G.charging ? '按住蓄力 · 松开投球' : '按住屏幕：指针停住并开始蓄力';
+      ctx.fillStyle = 'rgba(255,255,255,.6)';
       ctx.font = '600 11px "PingFang SC", "Microsoft YaHei", sans-serif';
-      ctx.fillText('按住蓄力 · 松开投球', 12, 594);
+      ctx.fillText(hint, 12, 594);
     }
 
     // 全中 / 补中提示
@@ -1450,9 +1555,14 @@
     if (G.shake > 0) G.shake = Math.max(0, G.shake - dt * 26);
     if (G.messageT > 0) G.messageT -= dt;
 
+    // 瞄准阶段：指针自己左右晃，玩家点一下定住
+    if (G.mode === 'aim' && !G.aimLocked) {
+      G.aimX = Math.sin(G.t * AIM_SPEED) * AIM_RANGE;
+    }
+
     if (G.mode === 'aim' && G.charging) {
       // 蓄力条来回摆动：0 → 1 → 0 循环，考验松手时机
-      G.powerT += dt * 1.15;
+      G.powerT += dt * 1.05;
       const p = G.powerT % 2;
       G.power = p < 1 ? p : 2 - p;
     }
