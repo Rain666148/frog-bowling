@@ -22,7 +22,7 @@
   window.__GAME_BOOTED__ = true;
 
   // 版本号：改功能时跟着改，页面和脚本对不上就能立刻发现
-  const VERSION = '2.4';
+  const VERSION = '2.5';
   // 数据结构版本：和老版本不兼容时改它，会清一次旧的最高分/排行榜
   const DATA_VERSION = '2.3';
 
