@@ -1,4 +1,4 @@
-/* =========================================================
+﻿/* =========================================================
    style.css —— 奶蛙保龄球
    canvas 负责画 3D 场景，HTML 负责记分板和面板文字
    ========================================================= */
@@ -243,3 +243,115 @@ canvas {
 }
 
 .settings .mini:hover { background: rgba(150, 40, 50, .55); }
+
+/* ---------------- 遮罩面板 ---------------- */
+.overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 30px 26px;
+  text-align: center;
+  background: radial-gradient(120% 80% at 50% 35%, rgba(58, 40, 96, .9), rgba(10, 8, 16, .97));
+  backdrop-filter: blur(5px);
+  transition: opacity .25s ease, visibility .25s ease;
+}
+
+.overlay.hidden { opacity: 0; visibility: hidden; }
+
+.overlay h1 {
+  margin: 0;
+  font-size: 38px;
+  letter-spacing: 3px;
+  background: linear-gradient(180deg, #fff3b0, #ffbe3d);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: drop-shadow(0 6px 14px rgba(255, 190, 61, .3));
+}
+
+.overlay h2 { margin: 0; font-size: 24px; }
+.overlay .sub { margin: -2px 0 12px; font-size: 11px; letter-spacing: 5px; color: #a99cd0; }
+.overlay .desc { margin: 0; font-size: 13.5px; line-height: 1.9; color: #d8d0ef; }
+.overlay .desc b { color: #ffd75e; }
+.overlay .tip { margin: 14px 0 0; font-size: 12px; color: #8b82a8; }
+.overlay .final { margin: 2px 0 6px; font-size: 56px; font-weight: 800; color: #ffd75e; line-height: 1.05; }
+
+/* 破纪录：视频小窗 + 最高分行 */
+.overlay .clip {
+  width: 172px;
+  height: 172px;
+  margin: 10px auto 2px;
+  border-radius: 14px;
+  overflow: hidden;
+  background: #000;
+  box-shadow: 0 14px 30px rgba(0, 0, 0, .55), 0 0 0 1px rgba(255, 255, 255, .14);
+}
+
+.overlay .clip.hidden { display: none; }
+.overlay .clip canvas { display: block; width: 100%; height: 100%; }
+
+.overlay h2.record {
+  color: #ffd75e;
+  text-shadow: 0 6px 18px rgba(255, 215, 94, .35);
+}
+
+.overlay .best { margin: 14px 0 0; font-size: 12.5px; color: #9d94b8; }
+.overlay .best b { color: #ffd75e; }
+
+.btn {
+  margin-top: 18px;
+  padding: 13px 30px;
+  border: 0;
+  border-radius: 999px;
+  font-size: 15px;
+  font-weight: 700;
+  color: #3a2600;
+  background: linear-gradient(180deg, #ffe08a, #ffb52e);
+  box-shadow: 0 10px 26px rgba(255, 181, 46, .35), inset 0 -3px 0 rgba(0, 0, 0, .16);
+  cursor: pointer;
+  transition: transform .12s ease, box-shadow .12s ease;
+}
+
+.btn:hover { transform: translateY(-2px); box-shadow: 0 14px 32px rgba(255, 181, 46, .45), inset 0 -3px 0 rgba(0, 0, 0, .16); }
+.btn:active { transform: translateY(1px); }
+
+/* 资源还没加载完时按钮是禁用的，避免"点了没反应" */
+.btn:disabled {
+  opacity: .5;
+  cursor: progress;
+  transform: none;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, .3);
+}
+
+/* ---------------- 错误提示 ---------------- */
+.crash {
+  position: absolute;
+  left: 50%;
+  bottom: 16px;
+  transform: translateX(-50%);
+  z-index: 9;
+  max-width: 92%;
+  max-height: 58%;
+  overflow: auto;
+  padding: 12px 16px;
+  border-radius: 12px;
+  background: rgba(58, 12, 22, .96);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, .6), 0 0 0 1px rgba(255, 120, 120, .45);
+  color: #ffd9d9;
+  text-align: left;
+}
+
+.crash.hidden { display: none; }
+.crash h3 { margin: 0 0 6px; font-size: 14px; color: #ff9d9d; }
+.crash pre { margin: 0; white-space: pre-wrap; word-break: break-word; font-family: ui-monospace, Consolas, monospace; font-size: 12px; line-height: 1.7; }
+.crash p { margin: 6px 0 0; font-size: 11px; color: #d9a6a6; }
+
+@media (max-width: 430px) {
+  .overlay h1 { font-size: 31px; }
+  .cell .tt { font-size: 11px; }
+}
