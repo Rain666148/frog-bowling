@@ -22,7 +22,7 @@
   window.__GAME_BOOTED__ = true;
 
   // 版本号：改功能时跟着改，页面和脚本对不上就能立刻发现
-  const VERSION = '2.6';
+  const VERSION = '3.0';
   // 数据结构版本：和老版本不兼容时改它，会清一次旧的最高分/排行榜
   const DATA_VERSION = '2.3';
 
@@ -87,6 +87,12 @@
   // 背景音乐：循环播放，结算界面不放
   const BGM_FILE = 'assets/audio/bgm.wav';
 
+  // 背景图（下标 0 = 默认渐变，不加载图片；其余对应 assets/bg/*.png）
+  const BG_NAMES = ['默认', '球馆', '森林', '海洋', '天空', '城市', '雪地'];
+  const BG_FILES = [null,
+    'assets/bg/alley.png', 'assets/bg/forest.png', 'assets/bg/ocean.png',
+    'assets/bg/sky.png', 'assets/bg/city.png', 'assets/bg/snow.png'];
+
   // 破纪录小窗：96 帧拼成一张精灵图（12 列 × 8 行），减少请求数
   const REC_FRAME_COUNT = 96;
   const REC_SHEET = 'assets/record-sheet.jpg';
@@ -143,7 +149,7 @@
   resize();
   window.addEventListener('resize', resize);
 
-  const IMG = { frogFrames: [], ball: null, laughFrames: [], recSheet: null };
+  const IMG = { frogFrames: [], ball: null, laughFrames: [], recSheet: null, bgs: [] };
   const PIN_IMGS = [];
 
   // 单文件版会把图片以 data:URI 的形式塞进 window.__ASSETS，
@@ -231,6 +237,14 @@
     jobs.push({
       src: ASSET.recSheet || REC_SHEET,
       store: function (im) { IMG.recSheet = im; }
+    });
+    // 背景图也不挡开局，后台慢慢加载
+    BG_FILES.forEach(function (src, i) {
+      if (!src) return;
+      jobs.push({
+        src: (ASSET.bgs && ASSET.bgs[i]) || src,
+        store: function (im) { IMG.bgs[i] = im; }
+      });
     });
     return jobs;
   }
@@ -388,7 +402,13 @@
     laughing: false,       // 正在捧腹大笑
     laughT: 0,             // 笑的动画计时
     laughEnd: null,        // 提前结束（点一下/按空格跳过）
-    laughTimer: 0
+    laughTimer: 0,
+    frameBonus: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],  // 每格从闪光奶鱼拿到的加分
+    shiny: -1,             // 这一球哪只瓶是闪光奶鱼（-1 = 没有）
+    shinyHit: false,       // 这一球有没有打中闪光奶鱼
+    shinyFx: 0,            // 打中时的爆炸特效计时
+    bg: 0,                 // 当前背景（0 = 默认）
+    paused: false          // 设置框打开时暂停
   };
 
   /* ---------------- 4. 瓶与球 ---------------- */
@@ -447,6 +467,14 @@
     p.fall = 0;
     G.shake = Math.min(9, G.shake + 5);
     playHitSound(Math.min(10, Math.hypot(vx, vz)));
+
+    // 打倒闪光奶鱼：这一格 +5 分
+    if (p.i === G.shiny) {
+      G.shiny = -1;
+      G.shinyHit = true;
+      G.shinyFx = 1.1;
+      G.frameBonus[G.frame - 1] += 5;
+    }
   }
 
   /* ---------------- 5. 输入 ---------------- */
@@ -480,6 +508,7 @@
   window.addEventListener('keydown', function (e) {
     const k = e.key.toLowerCase();
     if (k === ' ' || k === 'enter') e.preventDefault();
+    if (k === 'escape') { closeSettings(); return; }
 
     if (G.mode === 'aim' && k === ' ' && !e.repeat) beginThrowCharge();
     if ((k === ' ' || k === 'enter') && G.mode === 'title') startGame();
@@ -508,6 +537,67 @@
   }
   function saveLaughEnabled(v) {
     try { localStorage.setItem('frog_laugh', v ? '1' : '0'); } catch (e) { /* 忽略 */ }
+  }
+
+  // 选中的背景
+  function loadBg() {
+    try {
+      const v = Number(localStorage.getItem('frog_bg')) || 0;
+      return Math.max(0, Math.min(BG_NAMES.length - 1, v));
+    } catch (e) { return 0; }
+  }
+  function saveBg(v) {
+    try { localStorage.setItem('frog_bg', String(v)); } catch (e) { /* 忽略 */ }
+  }
+
+  // 设置面板里的背景选择器
+  function buildBgPicker() {
+    const box = document.getElementById('bgPicker');
+    if (!box) return;
+    box.innerHTML = '';
+    BG_NAMES.forEach(function (name, i) {
+      const b = document.createElement('button');
+      b.className = 'bg-chip' + (i === G.bg ? ' on' : '');
+      b.textContent = name;
+      b.addEventListener('click', function () {
+        G.bg = i;
+        saveBg(i);
+        const chips = box.querySelectorAll('.bg-chip');
+        for (let k = 0; k < chips.length; k++) {
+          chips[k].classList.toggle('on', k === i);
+        }
+      });
+      box.appendChild(b);
+    });
+  }
+
+  // 打开设置 = 暂停；叉掉 = 继续
+  function openSettings() {
+    const panel = document.getElementById('settings');
+    if (!panel) return;
+    panel.classList.remove('hidden');
+    G.paused = true;
+    hideGearHint();
+  }
+  function closeSettings() {
+    const panel = document.getElementById('settings');
+    if (panel) panel.classList.add('hidden');
+    G.paused = false;
+  }
+  function hideGearHint() {
+    const h = document.getElementById('gearHint');
+    if (h) h.classList.add('hidden');
+    try { localStorage.setItem('frog_hint_seen', '1'); } catch (e) { /* 忽略 */ }
+  }
+  // 第一次玩的时候指一下齿轮
+  function maybeShowGearHint() {
+    let seen = true;
+    try { seen = localStorage.getItem('frog_hint_seen') === '1'; } catch (e) { /* 忽略 */ }
+    if (seen) return;
+    const h = document.getElementById('gearHint');
+    if (!h) return;
+    h.classList.remove('hidden');
+    setTimeout(hideGearHint, 9000);
   }
   function loadBest() {
     try { return Number(localStorage.getItem('frog_best')) || 0; } catch (e) { return 0; }
@@ -602,12 +692,24 @@
 
     const gear = document.getElementById('gearBtn');
     const panel = document.getElementById('settings');
-    if (gear && panel) {
+    if (gear) {
       gear.addEventListener('click', function (e) {
         e.stopPropagation();
-        panel.classList.toggle('hidden');
+        openSettings();
       });
     }
+    if (panel) {
+      // 点弹框外面也关掉
+      panel.addEventListener('click', function (e) {
+        if (e.target === panel) closeSettings();
+      });
+    }
+    const closeBtn = document.getElementById('settingsClose');
+    if (closeBtn) closeBtn.addEventListener('click', closeSettings);
+
+    // 背景
+    G.bg = loadBg();
+    buildBgPicker();
 
     const optSound = document.getElementById('optSound');
     if (optSound) {
@@ -648,6 +750,9 @@
 
   function startGame() {
     G.frames = [[], [], [], [], [], [], [], [], [], []];
+    G.frameBonus = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+    G.shiny = -1;
+    G.shinyHit = false;
     G.frame = 1;
     G.ballNo = 1;
     G.total = 0;
@@ -655,6 +760,7 @@
     G.message = '';
     G.messageT = 0;
     makePins();
+    pickShiny();
     G.rackStanding = 10;
     G.mode = 'aim';
     G.charging = false;
@@ -721,9 +827,10 @@
 
     const wasStrike = knocked === 10 && G.rackStanding === 10;
     const wasSpare = !wasStrike && knocked === G.rackStanding && G.rackStanding < 10;
-    if (wasStrike) showMessage('全中！+10', '#ffd75e');
-    else if (wasSpare) showMessage('补中！+10', '#7de0ff');
-    else if (knocked > 0) showMessage('+' + knocked, '#cfc6e6');
+    const sfx = G.shinyHit ? '　闪光 +5' : '';
+    if (wasStrike) showMessage('全中！+10' + sfx, '#ffd75e');
+    else if (wasSpare) showMessage('补中！+10' + sfx, '#7de0ff');
+    else if (knocked > 0) showMessage('+' + knocked + sfx, '#cfc6e6');
     else showMessage('这一球空了', '#9d94b8');
 
     G.ball = null;
@@ -789,7 +896,15 @@
     G.charging = false;
     G.aimLocked = false;      // 下一球要重新锁定方向
     G.settleT = 0;
+    pickShiny();              // 每一球重新挑一只闪光奶鱼
     renderBoard();
+  }
+
+  // 在还站着的瓶里随机挑一只，作为这一球的"闪光奶鱼"（打倒 +5 分）
+  function pickShiny() {
+    const stand = G.pins.filter(function (p) { return p.standing; });
+    G.shiny = stand.length ? stand[Math.floor(Math.random() * stand.length)].i : -1;
+    G.shinyHit = false;
   }
 
   /* ---- 全中庆祝：奶蛙原地变成"捧腹大笑"，配视频原声，放完（或跳过）再继续 ---- */
@@ -983,6 +1098,13 @@
         cum += pts;
         out.push({ rolls: rolls, score: pts, cum: pending ? null : cum, marks: rollMarks(rolls) });
       }
+    }
+
+    // 闪光奶鱼的 +5 只进"累计"，不改变本格得分（否则全中/补中的加分算法就乱了）
+    let bonus = 0;
+    for (let f = 0; f < 10; f++) {
+      bonus += G.frameBonus[f] || 0;
+      if (out[f].cum != null) out[f].cum += bonus;
     }
     return out;
   }
@@ -1192,17 +1314,30 @@
   }
 
   function drawWall() {
-    const g = ctx.createLinearGradient(0, 0, 0, FAR_Y);
-    g.addColorStop(0, '#100b1b');
-    g.addColorStop(1, '#2a1f42');
-    ctx.fillStyle = g;
-    ctx.fillRect(0, 0, W, FAR_Y);
+    const bg = IMG.bgs[G.bg];
+    if (bg) {
+      // 选中的背景图铺满远景区域
+      ctx.drawImage(bg, 0, 0, W, FAR_Y);
+      // 再压一层暗调：保证球瓶和记分板在任何背景下都清楚
+      const shade = ctx.createLinearGradient(0, 0, 0, FAR_Y);
+      shade.addColorStop(0, 'rgba(10, 6, 18, .28)');
+      shade.addColorStop(0.6, 'rgba(10, 6, 18, .16)');
+      shade.addColorStop(1, 'rgba(10, 6, 18, .58)');
+      ctx.fillStyle = shade;
+      ctx.fillRect(0, 0, W, FAR_Y);
+    } else {
+      const g = ctx.createLinearGradient(0, 0, 0, FAR_Y);
+      g.addColorStop(0, '#100b1b');
+      g.addColorStop(1, '#2a1f42');
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, W, FAR_Y);
 
-    // 竖向灯带
-    for (let i = 0; i < 9; i++) {
-      const x = 30 + i * 52;
-      ctx.fillStyle = 'rgba(120, 90, 200, .12)';
-      ctx.fillRect(x, 0, 6, FAR_Y);
+      // 竖向灯带
+      for (let i = 0; i < 9; i++) {
+        const x = 30 + i * 52;
+        ctx.fillStyle = 'rgba(120, 90, 200, .12)';
+        ctx.fillRect(x, 0, 6, FAR_Y);
+      }
     }
 
     // 招牌
@@ -1323,6 +1458,39 @@
     const h = pxPerM(pos.s) * PIN_H * (0.35 + 0.65 * p.pop);
     const w = h * (img.width / img.height) * 0.82;
 
+    const isShiny = p.standing && p.i === G.shiny;
+
+    // 闪光奶鱼：底下画一圈金色光晕 + 环绕的小星星
+    if (isShiny) {
+      const pulse = 0.75 + 0.25 * Math.sin(t * 7);
+      const glow = ctx.createRadialGradient(pos.x, pos.y - h * 0.45, 2,
+                                            pos.x, pos.y - h * 0.45, h * 0.8);
+      glow.addColorStop(0, 'rgba(255, 240, 150, ' + (0.85 * pulse).toFixed(3) + ')');
+      glow.addColorStop(0.6, 'rgba(255, 220, 110, ' + (0.35 * pulse).toFixed(3) + ')');
+      glow.addColorStop(1, 'rgba(255, 236, 140, 0)');
+      ctx.fillStyle = glow;
+      ctx.beginPath();
+      ctx.ellipse(pos.x, pos.y - h * 0.45, h * 0.8, h * 0.9, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.save();
+      for (let k = 0; k < 7; k++) {
+        const a = t * 1.9 + k * Math.PI * 2 / 7;
+        const rx = Math.cos(a) * h * 0.6;
+        const ry = Math.sin(a) * h * 0.36;
+        const s = 2.5 + 2.2 * Math.abs(Math.sin(t * 5 + k));
+        ctx.fillStyle = 'rgba(255, 252, 214, .98)';
+        ctx.beginPath();
+        ctx.moveTo(pos.x + rx, pos.y - h * 0.5 + ry - s);
+        ctx.lineTo(pos.x + rx + s * 0.62, pos.y - h * 0.5 + ry);
+        ctx.lineTo(pos.x + rx, pos.y - h * 0.5 + ry + s);
+        ctx.lineTo(pos.x + rx - s * 0.62, pos.y - h * 0.5 + ry);
+        ctx.closePath();
+        ctx.fill();
+      }
+      ctx.restore();
+    }
+
     ctx.save();
     // 越靠后的排画得越高一点：屏幕上纵深只有几个像素，不加这个会挤成一排
     ctx.translate(pos.x, pos.y - p.row * 5);
@@ -1341,7 +1509,27 @@
     ctx.ellipse(0, p.row * 5, w * 0.34, w * 0.13, 0, 0, Math.PI * 2);
     ctx.fill();
 
+    // 闪光奶鱼：让精灵本身也发光
+    if (isShiny) {
+      ctx.shadowColor = 'rgba(255, 226, 110, .95)';
+      ctx.shadowBlur = 14 + 7 * Math.sin(t * 6);
+    }
     ctx.drawImage(img, -w / 2, -h, w, h);
+    ctx.shadowBlur = 0;
+
+    // 头顶一颗跳动的星
+    if (isShiny) {
+      const bob = Math.sin(t * 4) * 3;
+      const s = 5.5;
+      ctx.fillStyle = 'rgba(255, 250, 200, .98)';
+      ctx.beginPath();
+      ctx.moveTo(0, -h - 10 + bob - s);
+      ctx.lineTo(s * 0.6, -h - 10 + bob);
+      ctx.lineTo(0, -h - 10 + bob + s);
+      ctx.lineTo(-s * 0.6, -h - 10 + bob);
+      ctx.closePath();
+      ctx.fill();
+    }
     ctx.restore();
   }
 
@@ -1588,6 +1776,7 @@
     }
     if (G.shake > 0) G.shake = Math.max(0, G.shake - dt * 26);
     if (G.messageT > 0) G.messageT -= dt;
+    if (G.shinyFx > 0) G.shinyFx = Math.max(0, G.shinyFx - dt);
 
     // 瞄准阶段：指针自己左右晃，玩家点一下定住
     if (G.mode === 'aim' && !G.aimLocked) {
@@ -1611,6 +1800,13 @@
     let dt = (ts - G.last) / 1000;
     G.last = ts;
     dt = Math.min(dt, 0.05);
+
+    // 设置框打开时暂停：不推进时间，只把当前画面画一次（弹框后面能看见球道）
+    if (G.paused) {
+      draw(G.t);
+      requestAnimationFrame(loop);
+      return;
+    }
 
     update(dt);
     draw(G.t);
@@ -1647,8 +1843,11 @@
       G.mode = 'title';
       requestAnimationFrame(loop);
 
-      // 剩下的素材（大笑 / 破纪录小窗）后台加载，不挡开局
+      // 剩下的素材（大笑 / 破纪录小窗 / 背景）后台加载，不挡开局
       loadList(deferredJobs()).catch(function () { /* 后台失败就算了 */ });
+
+      // 第一次玩：指一下齿轮
+      maybeShowGearHint();
     }).catch(function (err) {
       if (window.__showError) window.__showError(err.message);
     });

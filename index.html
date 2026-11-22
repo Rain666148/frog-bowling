@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#120d1d" />
   <title>奶蛙保龄球</title>
   <!-- 引入样式表：网页的"皮肤"（?v= 是版本号，防止浏览器用旧缓存） -->
-  <link rel="stylesheet" href="style.css?v=2.6" />
+  <link rel="stylesheet" href="style.css?v=3.0" />
 </head>
 <body>
   <div class="stage">
@@ -16,20 +16,32 @@
     <!-- 记分板：用 HTML 做文字排版比 canvas 省事，10 格标准保龄球记分 -->
     <div class="board" id="board"></div>
 
-    <!-- 设置：音效 / 全中大笑 开关 -->
+    <!-- 设置：点齿轮打开一个弹框，游戏自动暂停，叉掉继续 -->
     <button class="gear" id="gearBtn" title="设置">⚙</button>
+    <div class="gear-hint hidden" id="gearHint">点这里调音量、换背景</div>
+
     <div class="settings hidden" id="settings">
-      <label class="row"><input type="checkbox" id="optSound" /> <span>音效</span></label>
-      <label class="row"><input type="checkbox" id="optLaugh" /> <span>全中大笑</span></label>
-      <div class="vols">
-        <label class="vol"><span>背景音乐</span><input type="range" id="volBgm" min="0" max="100" value="42" /><b id="volBgmVal">42</b></label>
-        <label class="vol"><span>投球声</span><input type="range" id="volThrow" min="0" max="100" value="90" /><b id="volThrowVal">90</b></label>
-        <label class="vol"><span>撞瓶声</span><input type="range" id="volHit" min="0" max="100" value="80" /><b id="volHitVal">80</b></label>
-        <label class="vol"><span>全中大笑</span><input type="range" id="volLaugh" min="0" max="100" value="95" /><b id="volLaughVal">95</b></label>
-        <label class="vol"><span>结算动画</span><input type="range" id="volRecord" min="0" max="100" value="80" /><b id="volRecordVal">80</b></label>
+      <div class="modal-box">
+        <button class="modal-x" id="settingsClose" aria-label="关闭">×</button>
+        <h3>设置</h3>
+
+        <label class="row"><input type="checkbox" id="optSound" /> <span>音效</span></label>
+        <label class="row"><input type="checkbox" id="optLaugh" /> <span>全中大笑</span></label>
+
+        <div class="vols">
+          <label class="vol"><span>背景音乐</span><input type="range" id="volBgm" min="0" max="100" value="42" /><b id="volBgmVal">42</b></label>
+          <label class="vol"><span>投球声</span><input type="range" id="volThrow" min="0" max="100" value="90" /><b id="volThrowVal">90</b></label>
+          <label class="vol"><span>撞瓶声</span><input type="range" id="volHit" min="0" max="100" value="80" /><b id="volHitVal">80</b></label>
+          <label class="vol"><span>全中大笑</span><input type="range" id="volLaugh" min="0" max="100" value="95" /><b id="volLaughVal">95</b></label>
+          <label class="vol"><span>结算动画</span><input type="range" id="volRecord" min="0" max="100" value="80" /><b id="volRecordVal">80</b></label>
+        </div>
+
+        <p class="sub-title">背景</p>
+        <div class="bgs" id="bgPicker"></div>
+
+        <button class="mini" id="clearBestBtn">清空本机最高分</button>
+        <p class="ver" id="verLine">版本 —</p>
       </div>
-      <button class="mini" id="clearBestBtn">清空本机最高分</button>
-      <p class="ver" id="verLine">版本 —</p>
     </div>
 
     <!-- 开始界面 -->
@@ -90,6 +102,6 @@
     })();
   </script>
 
-  <script src="game.js?v=2.6"></script>
+  <script src="game.js?v=3.0"></script>
 </body>
 </html>
