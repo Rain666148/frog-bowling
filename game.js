@@ -22,7 +22,9 @@
   window.__GAME_BOOTED__ = true;
 
   // 版本号：改功能时跟着改，页面和脚本对不上就能立刻发现
-  const VERSION = '2.2';
+  const VERSION = '2.3';
+  // 数据结构版本：和老版本不兼容时改它，会清一次旧的最高分/排行榜
+  const DATA_VERSION = '2.3';
 
   /* ---------------- 1. 常量与工具 ---------------- */
 
@@ -514,6 +516,84 @@
     try { localStorage.setItem('frog_best', String(v)); } catch (e) { /* 忽略 */ }
   }
 
+  /* ---- 本机排行榜：存前 10 个成绩 ---- */
+
+  function loadScores() {
+    try {
+      const a = JSON.parse(localStorage.getItem('frog_scores') || '[]');
+      if (!Array.isArray(a)) return [];
+      return a.filter(function (n) { return typeof n === 'number' && isFinite(n); });
+    } catch (e) { return []; }
+  }
+  function saveScores(list) {
+    try { localStorage.setItem('frog_scores', JSON.stringify(list)); } catch (e) { /* 忽略 */ }
+  }
+  function addScore(total) {
+    const list = loadScores();
+    list.push(total);
+    list.sort(function (a, b) { return b - a; });
+    saveScores(list.slice(0, 10));
+  }
+
+  // 升级到新版本时，把老版本留下的最高分/排行榜清零（只清一次）
+  function migrateData() {
+    try {
+      if (localStorage.getItem('frog_data_ver') !== DATA_VERSION) {
+        localStorage.removeItem('frog_best');
+        localStorage.removeItem('frog_scores');
+        localStorage.setItem('frog_data_ver', DATA_VERSION);
+      }
+    } catch (e) { /* 忽略 */ }
+  }
+
+  /* ---- 排行榜面板 ---- */
+
+  function openLeaderboard() {
+    const list = loadScores();
+    const ol = document.getElementById('rankList');
+    const me = document.getElementById('rankMe');
+    if (!ol) return;
+
+    if (!list.length) {
+      ol.innerHTML = '<li class="empty">还没有成绩，先玩一局吧</li>';
+    } else {
+      ol.innerHTML = list.map(function (v, i) {
+        const isMe = v === G.best;
+        const cls = (isMe ? 'me ' : '') + (i === 0 ? 'top1' : '');
+        return '<li class="' + cls + '"><span class="no">' + (i + 1) + '</span>' +
+          '<span class="sc">' + v + '</span></li>';
+      }).join('');
+    }
+
+    if (me) {
+      const inList = list.indexOf(G.best) >= 0;
+      me.innerHTML = inList
+        ? '你的最高分 <b>' + G.best + '</b> 已在榜上'
+        : '你的最高分 <b>' + G.best + '</b>，未上榜（前 10 名之外）';
+    }
+
+    document.getElementById('rankScreen').classList.remove('hidden');
+  }
+
+  function closeLeaderboard() {
+    const el = document.getElementById('rankScreen');
+    if (el) el.classList.add('hidden');
+  }
+
+  // 手动清空（设置面板里的按钮）
+  function clearRecords() {
+    if (!window.confirm('确定清空这台设备上的最高分和排行榜吗？无法恢复。')) return;
+    try {
+      localStorage.removeItem('frog_best');
+      localStorage.removeItem('frog_scores');
+    } catch (e) { /* 忽略 */ }
+    G.best = 0;
+    const sb = document.getElementById('startBest');
+    if (sb) sb.textContent = '0';
+    const bl = document.getElementById('bestLine');
+    if (bl) bl.textContent = '最高分：0';
+  }
+
   // 把开关状态同步到设置面板上的两个勾选框
   function syncSettings() {
     const s = document.getElementById('optSound');
@@ -563,6 +643,7 @@
 
     G.muted = loadMuted();
     G.laughEnabled = loadLaughEnabled();
+    migrateData();
     G.best = loadBest();
     const sb = document.getElementById('startBest');
     if (sb) sb.textContent = G.best;
@@ -597,6 +678,16 @@
         if (!G.laughEnabled && G.laughEnd) G.laughEnd();
       });
     }
+
+    // 排行榜 / 清空记录
+    const rankBtn = document.getElementById('rankBtn');
+    if (rankBtn) rankBtn.addEventListener('click', openLeaderboard);
+    const rankBtn2 = document.getElementById('rankBtn2');
+    if (rankBtn2) rankBtn2.addEventListener('click', openLeaderboard);
+    const rankClose = document.getElementById('rankClose');
+    if (rankClose) rankClose.addEventListener('click', closeLeaderboard);
+    const clearBtn = document.getElementById('clearBestBtn');
+    if (clearBtn) clearBtn.addEventListener('click', clearRecords);
 
     // 五个音量条
     loadVolumes();
@@ -696,9 +787,9 @@
     clearFallen();           // 倒下的瓶淡出，别躺在原地
     renderBoard();
 
-    // 全中就先看奶蛙笑一会儿，笑完再推进
+    // 全中 / 补中都会让奶蛙笑一会儿，笑完再推进
     const advance = function () { advanceRoll(knocked); };
-    if (wasStrike) celebrateThen(advance);
+    if (wasStrike || wasSpare) celebrateThen(advance);
     else advance();
   }
 
@@ -847,6 +938,7 @@
       G.best = total;
       saveBest(total);
     }
+    addScore(total);          // 记进本机排行榜
 
     const title = document.getElementById('recTitle');
     const comment = document.getElementById('finalComment');
@@ -1591,7 +1683,8 @@
   function checkDom() {
     const need = ['board', 'startBtn', 'retryBtn', 'titleScreen', 'overScreen',
       'gearBtn', 'settings', 'optSound', 'optLaugh', 'recTitle', 'bestLine',
-      'clipBox', 'recCanvas'];
+      'clipBox', 'recCanvas', 'rankScreen', 'rankList', 'rankMe',
+      'rankBtn', 'rankClose', 'clearBestBtn'];
     const missing = need.filter(function (id) { return !document.getElementById(id); });
     if (missing.length) {
       if (window.__showError) {

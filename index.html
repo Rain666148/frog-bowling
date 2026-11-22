@@ -26,8 +26,9 @@
         <label class="vol"><span>投球声</span><input type="range" id="volThrow" min="0" max="100" value="90" /><b id="volThrowVal">90</b></label>
         <label class="vol"><span>撞瓶声</span><input type="range" id="volHit" min="0" max="100" value="80" /><b id="volHitVal">80</b></label>
         <label class="vol"><span>全中大笑</span><input type="range" id="volLaugh" min="0" max="100" value="95" /><b id="volLaughVal">95</b></label>
-        <label class="vol"><span>破纪录</span><input type="range" id="volRecord" min="0" max="100" value="80" /><b id="volRecordVal">80</b></label>
+        <label class="vol"><span>结算动画</span><input type="range" id="volRecord" min="0" max="100" value="80" /><b id="volRecordVal">80</b></label>
       </div>
+      <button class="mini" id="clearBestBtn">清空本机最高分</button>
       <p class="ver" id="verLine">版本 —</p>
     </div>
 
@@ -36,12 +37,12 @@
       <h1>奶蛙保龄球</h1>
       <p class="sub">FROG BOWLING</p>
       <p class="desc">
-        移动鼠标（或手指）瞄准，<b>按住蓄力</b>，<b>松开投球</b>。<br />
-        打满 10 格，全中（STRIKE）和补中（SPARE）有额外加分。
+        <b>按住屏幕</b>：指针停住并开始蓄力，<b>松开投球</b>。<br />
+        打满 10 格，全中和补中有额外加分。
       </p>
       <button class="btn" id="startBtn" disabled>载 入 中…</button>
       <p class="best">最高分：<span id="startBest">0</span></p>
-      <p class="tip">键盘：← → 瞄准，空格蓄力</p>
+      <p class="rank-link"><button class="link" id="rankBtn">查看排行榜</button></p>
     </div>
 
     <!-- 结束界面（破纪录时换成庆祝版） -->
@@ -54,6 +55,16 @@
       </div>
       <p class="best" id="bestLine">最高分：0</p>
       <button class="btn" id="retryBtn">再来一局</button>
+      <p class="rank-link"><button class="link" id="rankBtn2">查看排行榜</button></p>
+    </div>
+
+    <!-- 排行榜 -->
+    <div class="overlay hidden" id="rankScreen">
+      <h2>本机排行榜</h2>
+      <p class="sub">前 10 名 · 只统计这台设备上的成绩</p>
+      <ol class="rank-list" id="rankList"></ol>
+      <p class="rank-me" id="rankMe"></p>
+      <button class="btn" id="rankClose">关 闭</button>
     </div>
 
     <!-- 出错时把原因显示在屏幕上（排错用，正常玩看不到） -->

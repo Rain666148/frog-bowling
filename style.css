@@ -230,6 +230,82 @@ canvas {
   font-size: 10.5px;
 }
 
+.settings .mini {
+  width: 100%;
+  margin-top: 8px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 120, 120, .45);
+  background: rgba(120, 30, 40, .35);
+  color: #ffb3b3;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.settings .mini:hover { background: rgba(150, 40, 50, .55); }
+
+/* ---------------- 排行榜 ---------------- */
+.rank-link { margin: 10px 0 0; }
+
+.link {
+  padding: 2px 6px;
+  border: 0;
+  background: none;
+  color: #9d94b8;
+  font-size: 12px;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.link:hover { color: #ffd75e; }
+
+.rank-list {
+  width: 100%;
+  max-width: 300px;
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.rank-list li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 10px;
+  margin-bottom: 4px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, .05);
+  font-size: 14px;
+  color: #e2dbff;
+}
+
+.rank-list li .no {
+  width: 24px;
+  flex: none;
+  text-align: center;
+  font-weight: 700;
+  color: #8b82a8;
+}
+
+.rank-list li .sc {
+  flex: 1;
+  text-align: right;
+  font-weight: 700;
+  color: #ffd75e;
+}
+
+.rank-list li.me {
+  background: rgba(255, 205, 90, .18);
+  box-shadow: 0 0 0 1px rgba(255, 205, 90, .5) inset;
+}
+
+.rank-list li.top1 .no { color: #ffd75e; }
+.rank-list li.empty { color: #6d648a; font-size: 12.5px; justify-content: center; }
+
+.rank-me { margin: 10px 0 0; font-size: 12px; color: #9d94b8; }
+.rank-me b { color: #ffd75e; }
+
 /* ---------------- 遮罩面板 ---------------- */
 .overlay {
   position: absolute;
